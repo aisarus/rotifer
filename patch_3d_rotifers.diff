@@ -1,0 +1,47 @@
+--- monohtml_rotifer_tanks3.html
++++ monohtml_rotifer_tanks3.html
+@@ -356,7 +356,7 @@
+   }
+ 
+   function spawnRotifers(tankId, count, circ){
+-    const t = tanks.find(x=>x.id===tankId);
++const t = tanks.find(x=>x.id===tankId);
+     const srf = surfaces.get(t.id);
+     for (let k=0;k<count;k++){
+       let tries=0; let wx, wy;
+@@ -370,6 +370,7 @@
+         const surfYcm = t.y + Math.max(0.5, Math.min(t.h-1, srf.base + srf.y[idx]));
+         if (wy >= surfYcm) break;
+       }
++
+       const vx = gauss()*0.005, vy = gauss()*0.005;
+       ROT_POOLS.get(t.id).push({x:wx, y:wy, vx, vy});
+     }
+@@ -377,7 +378,8 @@
+ 
+   let lastRetarget = 0;
+   function stepRotifers(dt){
+-    if (!microscopeActive()) { clearRotifers(); return; } // hard gate by zoom threshold
++if (!microscopeActive()) { clearRotifers(); return; }
++// hard gate by zoom threshold
+     const circ = microscopeCircle();
+     if (performance.now() - lastRetarget > 350){ retargetPools(); lastRetarget = performance.now(); }
+ 
+@@ -421,7 +423,7 @@
+   }
+ 
+   function renderRotifers(){
+-    if (!microscopeActive()) return; // hide when zoom below threshold
++if (!microscopeActive()) return; // hide when zoom below threshold
+     const cx = (canvas.width / DPR) * 0.5;
+     const cy = (canvas.height/ DPR) * 0.5;
+     const rCss = (Math.min(canvas.width, canvas.height) * 0.28) / DPR;
+@@ -439,7 +441,7 @@
+         const s = worldToScreen(r.x, r.y);
+         ctx.fillRect(Math.round(s.x)-1, Math.round(s.y)-1, 2, 2);
+       }
+-    }
++}
+     ctx.restore();
+ 
+     if (microscopeHUD){
