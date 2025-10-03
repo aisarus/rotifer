@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MonoHTML Monolith — 4× Tanks (1 m × 1 m) • water + rotifers • pseudo‑3D • salinity • Brownian</title>
+  <style>
+    :root{
+      --bg:#eaf0ff; --ink:#101627; --mut:#3b4a7a; --hud:#ffffffd9;
+      --glass:#27406a; --glassLite:rgba(102,163,255,0.22);
+      --accent:#0b63ff;
+      --led-green:#17c964; --led-yellow:#f5a623; --led-red:#ff3b30;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--ink);
+         font:14px/1.35 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial}
+    canvas{display:block;width:100vw;height:100vh}
+    #hud{position:fixed;left:12px;top:12px;z-index:10;background:var(--hud);
+         backdrop-filter: blur(6px);
+         border:1px solid #d6defa;border-radius:12px;padding:10px 12px;max-width:min(46ch,calc(100vw - 24px));}
+    #hud h1{margin:0 0 6px 0;font-size:14px;letter-spacing:.3px}
+    .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .pill{border:1px solid #c9d5ff;border-radius:999px;padding:2px 8px}
+    kbd{padding:1px 6px;border:1px solid #b7c6ff;border-bottom-color:#9fb2ff;border-radius:6px;background:#f0f4ff;color:#33406c;
+        font:12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}
+    .tiny{font-size:12px;color:#263362cc}
+    .right{position:fixed;right:12px;top:12px;z-index:10;background:var(--hud);
+           border:1px solid #d6defa;border-radius:12px;padding:10px 12px;min-width:330px}
+    .sectionTitle{margin-top:6px;font-weight:700;color:#1f2b54}
+    a{color:var(--accent);text-decoration:none}
+    .hidden{display:none}
+    /* salinity toggles */
+    .salRow{display:grid;grid-template-columns: 1fr auto;gap:8px;align-items:center;margin:6px 0}
+    .tog{display:inline-flex;border:1px solid #c9d5ff;border-radius:10px;overflow:hidden}
+    .tog button{all:unset;cursor:pointer;padding:4px 8px;font-weight:700;color:#23315d}
+    .tog button:active{background:#eaf0ff}
+    .tog .sep{width:1px;background:#c9d5ff}
+    .unit{color:#3a4a7a}
+  </style>
+</head>
+<body>
+  <canvas id="c" aria-label="Lab scene with 4 aquaria, pseudo‑3D water, microscope circle with Brownian rotifers, salinity sensors"></canvas>
+
+  <section id="hud" role="note" aria-live="polite">
+    <h1>Rotifer Tanks ×4 • 1 m × 1 m • MonoHTML (pseudo‑3D)</h1>
+    <div class="tiny">Water filled to near the rim. Rotifers are tiny black pixels with slow Brownian motion and are visible <strong>only inside the microscope circle</strong> and <strong>only when zoom ≥ threshold</strong>. The surface reacts with gentle ripples.</div>
+    <div class="row tiny" style="margin-top:6px">
+      <div class="pill"><kbd>Wheel</kbd> — zoom</div>
+      <div class="pill"><kbd>Right‑drag</kbd> — pan</div>
+      <div class="pill"><kbd>Left click</kbd> — add wave</div>
+      <div class="pill"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> — focus a tank</div>
+      <div class="pill"><kbd>M</kbd> — microscope HUD</div>
+      <div class="pill"><kbd>H</kbd> — hide UI</div>
+      <div class="pill"><kbd>R</kbd> — reset view</div>
+    </div>
+    <div class="tiny" style="margin-top:6px">
+      Scale: 1 cm = <span id="cmPx"></span> px @ 1×. Tank: <strong>100×100 cm</strong> (visual depth 10 cm).
+      Zoom: <span id="zoomOut"></span>×. Density: <span id="densOut"></span> rot/mL. DOF: <span id="dofOut"></span> mm. Threshold: <span id="thrOut"></span>×.
+    </div>
+  </section>
+
+  <section class="right" id="panel">
+    <div class="tiny sectionTitle">Microscope parameters</div>
+    <div class="tiny">Density (rot/mL): <span id="densOut2"></span></div>
+    <div class="tog" style="margin:4px 0 8px 0">
+      <button id="densMinus">◄ −10</button><div class="sep"></div><button id="densPlus">+10 ►</button>
+    </div>
+    <div class="tiny">Depth of focus (mm): <span id="dofOut2"></span></div>
+    <div class="tog" style="margin:4px 0 8px 0">
+      <button id="dofMinus">◄ −0.1</button><div class="sep"></div><button id="dofPlus">+0.1 ►</button>
+    </div>
+    <div class="tiny">Microscope threshold (×): <span id="thrOut2"></span></div>
+    <div class="tog" style="margin:4px 0 8px 0">
+      <button id="thrMinus">◄ −1</button><div class="sep"></div><button id="thrPlus">+1 ►</button>
+    </div>
+
+    <div class="tiny sectionTitle">Salinity & sensor</div>
+    <div class="tiny">Arrows apply ±0.5 ppt per click. LED: <span class="unit">green 5–15</span>, <span class="unit">yellow 20–35</span>, <span class="unit">red &lt;5 or &gt;35</span>.</div>
+
+    <div class="salRow">
+      <div>Tank 1: <span id="sal1"></span> ppt • sensor: <span id="sens1"></span> ppt</div>
+      <div class="tog"><button data-i="0" data-d="-0.5">◄ −0.5</button><div class="sep"></div><button data-i="0" data-d="+0.5">+0.5 ►</button></div>
+    </div>
+    <div class="salRow">
+      <div>Tank 2: <span id="sal2"></span> ppt • sensor: <span id="sens2"></span> ppt</div>
+      <div class="tog"><button data-i="1" data-d="-0.5">◄ −0.5</button><div class="sep"></div><button data-i="1" data-d="+0.5">+0.5 ►</button></div>
+    </div>
+    <div class="salRow">
+      <div>Tank 3: <span id="sal3"></span> ppt • sensor: <span id="sens3"></span> ppt</div>
+      <div class="tog"><button data-i="2" data-d="-0.5">◄ −0.5</button><div class="sep"></div><button data-i="2" data-d="+0.5">+0.5 ►</button></div>
+    </div>
+    <div class="salRow">
+      <div>Tank 4: <span id="sal4"></span> ppt • sensor: <span id="sens4"></span> ppt</div>
+      <div class="tog"><button data-i="3" data-d="-0.5">◄ −0.5</button><div class="sep"></div><button data-i="3" data-d="+0.5">+0.5 ►</button></div>
+    </div>
+  </section>
+
+<script>
+(() => {
+  // ====== Canvas / DPI ======
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const DPR = Math.max(1, Math.min(2.5, window.devicePixelRatio || 1));
+  function resize() {
+    const w = Math.floor(window.innerWidth);
+    const h = Math.floor(window.innerHeight);
+    canvas.width  = Math.floor(w * DPR);
+    canvas.height = Math.floor(h * DPR);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  window.addEventListener('resize', resize, {passive:true});
+  resize();
+
+  // ====== World units (cm) ======
+  const BASE_PX = 10; document.getElementById('cmPx').textContent = BASE_PX.toString();
+  const TANK_W = 100, TANK_H = 100, TANK_D = 10, GAP = 20; // depth=10 cm (visual Z)
+  const HEADSPACE_CM = 1.5; // water margin from top
+  const tanks = [
+    {id:1, x:0, y:0, w:TANK_W, h:TANK_H, d:TANK_D, water:HEADSPACE_CM, salTarget:10, salSensor:10},
+    {id:2, x:TANK_W+GAP, y:0, w:TANK_W, h:TANK_H, d:TANK_D, water:HEADSPACE_CM, salTarget:10, salSensor:10},
+    {id:3, x:0, y:TANK_H+GAP, w:TANK_W, h:TANK_H, d:TANK_D, water:HEADSPACE_CM, salTarget:10, salSensor:10},
+    {id:4, x:TANK_W+GAP, y:TANK_H+GAP, w:TANK_W, h:TANK_H, d:TANK_D, water:HEADSPACE_CM, salTarget:10, salSensor:10},
+  ];
+  const SAL_LIM_MIN=0, SAL_LIM_MAX=60; // clamp for sensor simulation
+  const SAL_WATER_SCALE=35;            // visual scaling for tint
+
+  const worldBounds = (() => {
+    const minX = Math.min(...tanks.map(t=>t.x));
+    const minY = Math.min(...tanks.map(t=>t.y));
+    const maxX = Math.max(...tanks.map(t=>t.x + t.w));
+    const maxY = Math.max(...tanks.map(t=>t.y + t.h));
+    return {minX, minY, maxX, maxY, w:maxX-minX, h:maxY-minY};
+  })();
+
+  // ====== Camera ======
+  const camera = { x: worldBounds.minX + worldBounds.w/2, y: worldBounds.minY + worldBounds.h/2, zoom: 0.4 };
+  function fitAll() {
+    const pad = 20;
+    const totalW = worldBounds.w + pad*2;
+    const totalH = worldBounds.h + pad*2;
+    const scaleX = (canvas.width / DPR) / (totalW * BASE_PX);
+    const scaleY = (canvas.height/ DPR) / (totalH * BASE_PX);
+    camera.zoom = Math.min(scaleX, scaleY);
+    camera.x = worldBounds.minX + worldBounds.w/2;
+    camera.y = worldBounds.minY + worldBounds.h/2;
+  }
+  fitAll();
+  function worldToScreen(wx, wy) {
+    const sx = (wx - camera.x) * camera.zoom * BASE_PX + (canvas.width / DPR)/2;
+    const sy = (wy - camera.y) * camera.zoom * BASE_PX + (canvas.height/ DPR)/2;
+    return {x:sx, y:sy};
+  }
+  // Oblique projection for z-depth (cabinet: 45°, half-depth)
+  const PROJ = { angle: Math.PI/4, scale: 0.5 };
+  function project(wx, wy, wz) {
+    const p = worldToScreen(wx, wy);
+    const dx = wz * PROJ.scale * Math.cos(PROJ.angle) * camera.zoom * BASE_PX;
+    const dy = -wz * PROJ.scale * Math.sin(PROJ.angle) * camera.zoom * BASE_PX;
+    return {x: p.x + dx, y: p.y + dy};
+  }
+  function screenToWorld(sx, sy) {
+    const wx = (sx - (canvas.width / DPR)/2) / (camera.zoom * BASE_PX) + camera.x;
+    const wy = (sy - (canvas.height/ DPR)/2) / (camera.zoom * BASE_PX) + camera.y;
+    return {x:wx, y:wy};
+  }
+  function zoomAt(factor, mx, my) {
+    const before = screenToWorld(mx, my);
+    camera.zoom = Math.max(0.05, Math.min(12, camera.zoom * factor));
+    const after = screenToWorld(mx, my);
+    camera.x += before.x - after.x;
+    camera.y += before.y - after.y;
+  }
+
+  // ====== UI state ======
+  let density = 120;
+  let dofMM = 1.0;
+  let threshold = 10;
+  const outZoom = document.getElementById('zoomOut');
+  const outDens = document.getElementById('densOut');
+  const outDens2= document.getElementById('densOut2');
+  const outDof  = document.getElementById('dofOut');
+  const outDof2 = document.getElementById('dofOut2');
+  const outThr  = document.getElementById('thrOut');
+  const outThr2 = document.getElementById('thrOut2');
+
+  function updateUI(){
+    outZoom.textContent = camera.zoom.toFixed(2);
+    outDens.textContent = density; outDens2.textContent = density;
+    outDof.textContent = dofMM.toFixed(1); outDof2.textContent = dofMM.toFixed(1);
+    outThr.textContent = threshold; outThr2.textContent = threshold;
+    for (let i=0;i<4;i++){
+      document.getElementById('sal'+(i+1)).textContent  = (+tanks[i].salTarget).toFixed(1);
+      document.getElementById('sens'+(i+1)).textContent = (+tanks[i].salSensor).toFixed(1);
+    }
+  }
+  updateUI();
+
+  // micro controls
+  document.getElementById('densMinus').onclick = ()=>{ density=Math.max(20, density-10); updateUI(); };
+  document.getElementById('densPlus').onclick  = ()=>{ density=Math.min(500, density+10); updateUI(); };
+  document.getElementById('dofMinus').onclick  = ()=>{ dofMM=Math.max(0.3, +(dofMM-0.1).toFixed(1)); updateUI(); };
+  document.getElementById('dofPlus').onclick   = ()=>{ dofMM=Math.min(2.0, +(dofMM+0.1).toFixed(1)); updateUI(); };
+  document.getElementById('thrMinus').onclick  = ()=>{ threshold=Math.max(4, threshold-1); clearRotifers(); updateUI(); };
+  document.getElementById('thrPlus').onclick   = ()=>{ threshold=Math.min(60, threshold+1); clearRotifers(); updateUI(); };
+
+  // salinity toggles
+  document.querySelectorAll('.salRow .tog button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const idx = parseInt(btn.dataset.i,10);
+      const delta = parseFloat(btn.dataset.d.replace(',', '.'));
+      adjustSalinity(idx, delta);
+    });
+  });
+  function adjustSalinity(idx, delta){
+    const t = tanks[idx];
+    t.salTarget = Math.max(SAL_LIM_MIN, Math.min(SAL_LIM_MAX, +(t.salTarget + delta).toFixed(1)));
+    triggerInjection(t);
+    updateUI();
+  }
+
+  // ====== Water surface (1D) ======
+  class Surface1D {
+    constructor(cols, widthCm, headspaceCm) {
+      this.n = cols; this.w = widthCm;
+      this.base = headspaceCm; // cm from rim to calm surface
+      this.y = new Float32Array(cols).fill(0);
+      this.v = new Float32Array(cols).fill(0);
+      this.a = new Float32Array(cols).fill(0);
+      this.k = 0.035; this.damp = 0.988; this.spread = 0.25;
+    }
+    disturb(i, power){ if (i>=0 && i<this.n) this.v[i] += power; }
+    step(dt){
+      for (let i=0;i<this.n;i++){ const f=-this.k*this.y[i]; this.a[i]=f; this.v[i]+=this.a[i]*dt; this.v[i]*=this.damp; }
+      const L=new Float32Array(this.n), R=new Float32Array(this.n);
+      for (let j=0;j<6;j++){
+        for (let i=0;i<this.n;i++){
+          if (i>0){ const d=this.y[i]-this.y[i-1]; L[i-1]+=this.spread*d; this.v[i]-=this.spread*d; }
+          if (i<this.n-1){ const d=this.y[i]-this.y[i+1]; R[i+1]+=this.spread*d; this.v[i]-=this.spread*d; }
+        }
+        for (let i=0;i<this.n;i++){ if (i>0) this.y[i-1]+=L[i-1]; if (i<this.n-1) this.y[i+1]+=R[i+1]; L[i]=R[i]=0; }
+      }
+      for (let i=0;i<this.n;i++) this.y[i]+=this.v[i]*dt;
+    }
+  }
+  const COLS = 240;
+  const surfaces = new Map();
+  for (const t of tanks) surfaces.set(t.id, new Surface1D(COLS, t.w, t.water));
+
+  // ====== Input ======
+  let pan = {active:false}; let mouse={x:0,y:0};
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('mousemove', e => { mouse.x=e.clientX; mouse.y=e.clientY; if (pan.active){ camera.x -= e.movementX/(camera.zoom*BASE_PX); camera.y -= e.movementY/(camera.zoom*BASE_PX); }});
+  canvas.addEventListener('mousedown', e => {
+    if (e.button===2) pan.active=true;
+    else if (e.button===0){
+      const wpt = screenToWorld(e.clientX, e.clientY);
+      const tank = pickTankAt(wpt.x, wpt.y);
+      if (tank){
+        const s = surfaces.get(tank.id);
+        const relX = (wpt.x - tank.x);
+        const i = Math.max(0, Math.min(s.n-1, Math.floor((relX / tank.w) * (s.n-1))));
+        s.disturb(i, -2.5);
+      }
+    }
+  });
+  window.addEventListener('mouseup', () => pan.active=false);
+  canvas.addEventListener('wheel', e => { const f = Math.pow(0.95, e.deltaY*0.1); zoomAt(f, e.clientX, e.clientY); updateUI(); }, {passive:true});
+  window.addEventListener('keydown', e => {
+    if (e.key==='r'||e.key==='R'){ fitAll(); clearRotifers(); updateUI(); }
+    if (e.key==='h'||e.key==='H'){ document.getElementById('hud').classList.toggle('hidden'); document.getElementById('panel').classList.toggle('hidden'); }
+    if (e.key==='m'||e.key==='M') microscopeHUD = !microscopeHUD;
+    if (['1','2','3','4'].includes(e.key)) { focusTank(parseInt(e.key,10)); clearRotifers(); }
+  });
+  function focusTank(id){
+    const t = tanks.find(x=>x.id===id); if (!t) return;
+    camera.x = t.x + t.w/2; camera.y = t.y + t.h/2;
+    const pad = 6;
+    const sx = (canvas.width / DPR) / ((t.w+pad*2)*BASE_PX);
+    const sy = (canvas.height/ DPR) / ((t.h+pad*2)*BASE_PX);
+    camera.zoom = Math.min(sx, sy); updateUI();
+  }
+  function pickTankAt(wx, wy){ for (const t of tanks) if (wx>=t.x && wx<=t.x+t.w && wy>=t.y && wy<=t.y+t.h) return t; return null; }
+
+  // ====== RNG & helpers ======
+  function hash32(x,y,z){ let h=(x*374761393)^(y*668265263)^(z*2246822519); h=(h^(h>>>13))*1274126177; h=(h^(h>>>16))>>>0; return h; }
+  function rand01(x,y,z){ return hash32(x,y,z)/4294967295; }
+  function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+  // ====== Rotifers: Brownian inside microscope circle only, and only if zoom ≥ threshold ======
+  let microscopeHUD = true;
+  const ROT_POOLS = new Map(); // tankId -> array of {x,y,vx,vy}
+  const SIM_BUDGET_MAX = 2200; // cap across all tanks
+  const BROWN_SIGMA = 0.06;    // cm/sqrt(s)
+  const V_MAX = 0.03;          // cm/s
+  const BUMP_RATE = 60;        // surface kicks per s
+  let bumpCarry = 0;
+
+  function ensurePools(){ for (const t of tanks) if (!ROT_POOLS.has(t.id)) ROT_POOLS.set(t.id, []); }
+  ensurePools();
+  function clearRotifers(){ for (const t of tanks){ const a = ROT_POOLS.get(t.id); a.length = 0; } }
+
+  function microscopeCircle() {
+    const cx = (canvas.width / DPR) * 0.5;
+    const cy = (canvas.height/ DPR) * 0.5;
+    const rCss = (Math.min(canvas.width, canvas.height) * 0.28) / DPR;
+    const wc = {x: camera.x, y: camera.y};
+    const rWorld = rCss / (camera.zoom * BASE_PX);
+    return {cx, cy, rCss, wc, rWorld};
+  }
+  function microscopeActive(){ return camera.zoom >= threshold; }
+
+  function estimateOverlapFraction(t, circ) {
+    const S = 220; let hit=0;
+    for (let i=0;i<S;i++){
+      const ang = Math.random()*Math.PI*2;
+      const rad = Math.sqrt(Math.random()) * circ.rWorld;
+      const wx = circ.wc.x + rad * Math.cos(ang);
+      const wy = circ.wc.y + rad * Math.sin(ang);
+      if (wx<t.x || wx>t.x+t.w || wy<t.y || wy>t.y+t.h) continue;
+      const srf = surfaces.get(t.id);
+      const idx = Math.max(0, Math.min(srf.n-1, Math.round(((wx - t.x)/t.w) * (srf.n-1))));
+      const surfYcm = t.y + Math.max(0.5, Math.min(t.h-1, srf.base + srf.y[idx]));
+      if (wy >= surfYcm) hit++;
+    }
+    return hit / S;
+  }
+
+  function retargetPools() {
+    if (!microscopeActive()) { clearRotifers(); return; }
+    const circ = microscopeCircle();
+    const areaCircleCm2 = Math.PI * circ.rWorld * circ.rWorld;
+    const densityLocal = density;
+    const depthMM = dofMM;
+
+    const desired = []; let sumDesired = 0;
+    for (const t of tanks){
+      const f = estimateOverlapFraction(t, circ);
+      const N = densityLocal * depthMM * areaCircleCm2 * f / 10;
+      const n = Math.max(0, N|0);
+      desired.push({id:t.id, target:n});
+      sumDesired += n;
+    }
+    const scale = sumDesired > SIM_BUDGET_MAX ? (SIM_BUDGET_MAX / sumDesired) : 1;
+    for (const {id, target} of desired){
+      const arr = ROT_POOLS.get(id);
+      const goal = Math.floor(target * scale);
+      if (arr.length < goal){
+        spawnRotifers(id, goal - arr.length, circ);
+      } else if (arr.length > goal){
+        arr.length = goal;
+      }
+    }
+  }
+
+  function spawnRotifers(tankId, count, circ){
+    const t = tanks.find(x=>x.id===tankId);
+    const srf = surfaces.get(t.id);
+    for (let k=0;k<count;k++){
+      let tries=0; let wx, wy;
+      while (tries++ < 40){
+        const ang = Math.random()*Math.PI*2;
+        const rad = Math.sqrt(Math.random()) * circ.rWorld;
+        wx = circ.wc.x + rad * Math.cos(ang);
+        wy = circ.wc.y + rad * Math.sin(ang);
+        if (wx<t.x || wx>t.x+t.w || wy<t.y || wy>t.y+t.h) continue;
+        const idx = Math.max(0, Math.min(srf.n-1, Math.round(((wx - t.x)/t.w) * (srf.n-1))));
+        const surfYcm = t.y + Math.max(0.5, Math.min(t.h-1, srf.base + srf.y[idx]));
+        if (wy >= surfYcm) break;
+      }
+      const vx = gauss()*0.005, vy = gauss()*0.005;
+      ROT_POOLS.get(t.id).push({x:wx, y:wy, vx, vy});
+    }
+  }
+
+  let lastRetarget = 0;
+  function stepRotifers(dt){
+    if (!microscopeActive()) { clearRotifers(); return; } // hard gate by zoom threshold
+    const circ = microscopeCircle();
+    if (performance.now() - lastRetarget > 350){ retargetPools(); lastRetarget = performance.now(); }
+
+    bumpCarry += BUMP_RATE * dt;
+    for (const t of tanks){
+      const arr = ROT_POOLS.get(t.id);
+      const srf = surfaces.get(t.id);
+      for (let i=0; i<arr.length; i++){
+        const r = arr[i];
+        r.vx += gauss() * 0.06 * Math.sqrt(dt);
+        r.vy += gauss() * 0.06 * Math.sqrt(dt);
+        const v = Math.hypot(r.vx, r.vy);
+        if (v > 0.03){ const k = 0.03 / v; r.vx *= k; r.vy *= k; }
+        r.x += r.vx * dt;
+        r.y += r.vy * dt;
+
+        if (r.x < t.x+0.2){ r.x = t.x+0.2; r.vx = Math.abs(r.vx)*0.6; }
+        if (r.x > t.x+t.w-0.2){ r.x = t.x+t.w-0.2; r.vx = -Math.abs(r.vx)*0.6; }
+        const idx = Math.max(0, Math.min(srf.n-1, Math.round(((r.x - t.x)/t.w) * (srf.n-1))));
+        const surfYcm = t.y + Math.max(0.5, Math.min(t.h-1, srf.base + srf.y[idx]));
+        const bottom = t.y + t.h - 0.5;
+        if (r.y < surfYcm+0.1){ r.y = surfYcm+0.1; r.vy = Math.abs(r.vy)*0.5; }
+        if (r.y > bottom-0.1){ r.y = bottom-0.1; r.vy = -Math.abs(r.vy)*0.5; }
+
+        // Remove if outside microscope circle (screen space)
+        const s = worldToScreen(r.x, r.y);
+        const cx = (canvas.width / DPR) * 0.5;
+        const cy = (canvas.height/ DPR) * 0.5;
+        const rCss = (Math.min(canvas.width, canvas.height) * 0.28) / DPR;
+        const dx = s.x - cx, dy = s.y - cy;
+        if (dx*dx + dy*dy > rCss*rCss){ arr.splice(i,1); i--; continue; }
+
+        if (bumpCarry >= 1){
+          const kicks = Math.floor(bumpCarry);
+          bumpCarry -= kicks;
+          const j = Math.max(0, Math.min(srf.n-1, idx + (Math.random()<0.5?-1:1)));
+          srf.disturb(j, (Math.random()-0.5)*0.08);
+        }
+      }
+    }
+  }
+
+  function renderRotifers(){
+    if (!microscopeActive()) return; // hide when zoom below threshold
+    const cx = (canvas.width / DPR) * 0.5;
+    const cy = (canvas.height/ DPR) * 0.5;
+    const rCss = (Math.min(canvas.width, canvas.height) * 0.28) / DPR;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, rCss, 0, Math.PI*2);
+    ctx.clip();
+
+    ctx.fillStyle = '#000';
+    for (const t of tanks){
+      const arr = ROT_POOLS.get(t.id);
+      for (let i=0;i<arr.length;i++){
+        const r = arr[i];
+        const s = worldToScreen(r.x, r.y);
+        ctx.fillRect(Math.round(s.x)-1, Math.round(s.y)-1, 2, 2);
+      }
+    }
+    ctx.restore();
+
+    if (microscopeHUD){
+      ctx.save(); ctx.setTransform(1,0,0,1,0,0);
+      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1.5;
+      const rDev = Math.min(canvas.width, canvas.height) * 0.28;
+      ctx.beginPath(); ctx.arc(canvas.width*0.5, canvas.height*0.5, rDev, 0, Math.PI*2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // ====== Lab backdrop ======
+  function drawLabBackdrop(){
+    const w = canvas.width / DPR, h = canvas.height / DPR;
+    const g = ctx.createLinearGradient(0,0,0,h);
+    g.addColorStop(0,'#f7faff'); g.addColorStop(0.45,'#eef3ff'); g.addColorStop(1,'#dfe7ff');
+    ctx.fillStyle = g; ctx.fillRect(0,0,w,h);
+    ctx.globalAlpha = 0.06; ctx.fillStyle = '#90a9ff';
+    for (let x=0; x<w; x+=42) ctx.fillRect(x, 0, 1, h);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = 'rgba(255,255,255,0.35)'; ctx.fillRect(w*0.1, h*0.12, w*0.8, 6);
+    const benchY = h*0.82; ctx.fillStyle = 'rgba(24,34,64,0.95)'; ctx.fillRect(0, benchY, w, h-benchY);
+  }
+
+  // ====== Chemical injection animation ======
+  const injections = []; // {tankId, t0, x, yStart}
+  function triggerInjection(t){
+    const x = t.x + t.w * 0.82;
+    const yStart = t.y - 6;
+    injections.push({tankId:t.id, t0:performance.now(), x, yStart});
+    const s = surfaces.get(t.id);
+    const idx = Math.max(0, Math.min(s.n-1, Math.floor(((x - t.x)/t.w) * (s.n-1))));
+    for (let k=-3;k<=3;k++) s.disturb(idx+k, -3 + Math.random()*1.2);
+  }
+  function drawInjections(){
+    const now = performance.now();
+    for (let i=injections.length-1;i>=0;i--){
+      const ev = injections[i];
+      const tnk = tanks.find(t=>t.id===ev.tankId);
+      const srf = surfaces.get(ev.tankId);
+      const age = now - ev.t0;
+      const dropTime = 600, plumeTime = 1400;
+      const surfIdx = Math.max(0, Math.min(srf.n-1, Math.round(((ev.x - tnk.x)/tnk.w) * (srf.n-1))));
+      const surfYcm = tnk.y + Math.max(0.5, Math.min(tnk.h-1, srf.base + srf.y[surfIdx]));
+
+      if (age < dropTime){
+        const p = age/dropTime;
+        const y = ev.yStart + (surfYcm - ev.yStart) * p*p;
+        const s = worldToScreen(ev.x, y);
+        ctx.fillStyle = 'rgba(0,120,255,0.85)';
+        ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI*2); ctx.fill();
+      }
+      if (age >= dropTime){
+        const p = Math.min(1, (age - dropTime) / plumeTime);
+        const px = worldToScreen(ev.x, surfYcm).x;
+        const py = worldToScreen(ev.x, surfYcm).y;
+        const h = worldToScreen(ev.x, tnk.y + tnk.h - 1).y - py;
+        const w = 6 + 40*p;
+        const alpha = 0.18 * (1-p);
+        const g = ctx.createLinearGradient(px, py, px, py + h*0.5);
+        g.addColorStop(0, `rgba(0,120,255,${alpha})`);
+        g.addColorStop(1, `rgba(0,120,255,0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.moveTo(px - w/2, py);
+        ctx.lineTo(px + w/2, py);
+        ctx.lineTo(px + w*0.35, py + h*0.5);
+        ctx.lineTo(px - w*0.35, py + h*0.5);
+        ctx.closePath();
+        ctx.fill();
+      }
+      if (age > dropTime + plumeTime) injections.splice(i,1);
+    }
+  }
+
+  // ====== Sensor update (first‑order lag + noise) ======
+  function stepSensors(dt){
+    const tau = 1.6; // s
+    for (const t of tanks){
+      const err = t.salTarget - t.salSensor;
+      t.salSensor += (err * dt / tau);
+      t.salSensor += (Math.random()-0.5) * 0.10 * dt; // ±0.05 ppt noise
+      if (t.salSensor < SAL_LIM_MIN) t.salSensor = SAL_LIM_MIN;
+      if (t.salSensor > SAL_LIM_MAX) t.salSensor = SAL_LIM_MAX;
+    }
+  }
+
+  // ====== Rendering ======
+  let last = performance.now();
+  function frame(ts){
+    const dt = Math.min(0.033, (ts - last)/1000); last = ts;
+    stepSensors(dt);
+    stepRotifers(dt);
+    for (const tank of tanks) surfaces.get(tank.id).step(dt);
+    drawLabBackdrop();
+    for (const tank of tanks) drawTank3D(tank);
+    drawInjections();
+    renderRotifers();
+    updateUI();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ====== Dynamic water tint depending on salinity (sensor value) ======
+  function waterColorsFor(t){
+    const s = Math.min(1, Math.max(0, t.salSensor / SAL_WATER_SCALE));
+    const a1 = (0.24 + 0.20*s).toFixed(3); // front face
+    const a2 = (0.12 + 0.18*s).toFixed(3); // overlay
+    const topA = (0.12 + 0.12*s).toFixed(3); // top plane
+    return {
+      front: `rgba(47,128,255,${a1})`,
+      front2:`rgba(43,120,255,${a2})`,
+      top:   `rgba(47,128,255,${topA})`
+    };
+  }
+  function sensorLedColor(val){
+    if (val < 5 || val > 35) return getCss('--led-red');
+    if (val >= 5 && val <= 15) return getCss('--led-green');
+    if (val >= 20 && val <= 35) return getCss('--led-yellow');
+    return getCss('--led-yellow'); // 15–20 transitional yellow
+  }
+
+  function drawTank3D(t){
+    const s = surfaces.get(t.id);
+    const cols = waterColorsFor(t);
+
+    // Surface samples along width
+    const surfFront = [];
+    for (let i=0; i<s.n; i++){
+      const xcm = t.x + (i/(s.n-1)) * t.w;
+      const ycm = t.y + Math.max(0.5, Math.min(t.h-1, s.base + s.y[i]));
+      surfFront.push({x:xcm, y:ycm});
+    }
+
+    // Back rim
+    const topLeftBack  = project(t.x,          t.y,          t.d);
+    const topRightBack = project(t.x + t.w,    t.y,          t.d);
+    const topLeftFront = worldToScreen(t.x,    t.y);
+    const topRightFront= worldToScreen(t.x+t.w,t.y);
+
+    // Top water plane
+    ctx.beginPath();
+    for (let i=0;i<surfFront.length;i++){
+      const p = worldToScreen(surfFront[i].x, surfFront[i].y);
+      if (i===0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    for (let i=surfFront.length-1; i>=0; i--){
+      const q = project(surfFront[i].x, surfFront[i].y, t.d);
+      ctx.lineTo(q.x, q.y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = cols.top; ctx.fill();
+
+    // Right water face
+    const sfR = surfFront[surfFront.length-1];
+    const surfRightFront = worldToScreen(sfR.x, sfR.y);
+    const surfRightBack  = project(sfR.x, sfR.y, t.d);
+    const bottomRightFront = worldToScreen(t.x+t.w, t.y + t.h - 0.5);
+    const bottomRightBack  = project(t.x+t.w, t.y + t.h - 0.5, t.d);
+    ctx.beginPath();
+    ctx.moveTo(surfRightFront.x,  surfRightFront.y);
+    ctx.lineTo(surfRightBack.x,   surfRightBack.y);
+    ctx.lineTo(bottomRightBack.x, bottomRightBack.y);
+    ctx.lineTo(bottomRightFront.x,bottomRightFront.y);
+    ctx.closePath();
+    ctx.fillStyle = cols.front; ctx.fill();
+
+    // Front water face
+    ctx.beginPath();
+    for (let i=0; i<s.n; i++){
+      const xcm = t.x + (i/(s.n-1)) * t.w;
+      const ycm = t.y + Math.max(0.5, Math.min(t.h-1, s.base + s.y[i]));
+      const p = worldToScreen(xcm, ycm);
+      if (i===0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+    }
+    const pRightBottom = worldToScreen(t.x + t.w, t.y + t.h - 0.5);
+    const pLeftBottom = worldToScreen(t.x, t.y + t.h - 0.5);
+    ctx.lineTo(pRightBottom.x, pRightBottom.y);
+    ctx.lineTo(pLeftBottom.x,  pLeftBottom.y);
+    ctx.closePath();
+    ctx.fillStyle = cols.front; ctx.fill();
+    ctx.fillStyle = cols.front2; ctx.fill();
+
+    // Glass
+    ctx.strokeStyle = getCss('--glass');
+    ctx.lineWidth = Math.max(1, 1 * camera.zoom);
+    const p0 = worldToScreen(t.x, t.y);
+    const p1 = worldToScreen(t.x + t.w, t.y + t.h);
+    ctx.strokeRect(p0.x, p0.y, p1.x - p0.x, p1.y - p0.y);
+    ctx.strokeStyle = getCss('--glassLite');
+    ctx.strokeRect(p0.x+1, p0.y+1, p1.x - p0.x - 2, p1.y - p0.y - 2);
+
+    // Sensor gizmo + LED status
+    const sx = worldToScreen(t.x + 2, t.y + s.base + 6);
+    ctx.fillStyle = 'rgba(18,28,58,0.8)';
+    ctx.fillRect(sx.x-6, sx.y-6, 12, 12);
+    ctx.fillStyle = sensorLedColor(t.salSensor);
+    ctx.fillRect(sx.x-2, sx.y-2, 4, 4);
+  }
+
+  function getCss(varName){ return getComputedStyle(document.documentElement).getPropertyValue(varName).trim(); }
+
+  // Ambient waves
+  setInterval(()=>{
+    for (const t of tanks){ const s = surfaces.get(t.id); const i = Math.floor(Math.random()*s.n); s.disturb(i,(Math.random()-0.5)*0.25); }
+  }, 1000);
+
+})();</script>
+</body>
+</html>
