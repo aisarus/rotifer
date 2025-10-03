@@ -1,0 +1,92 @@
+--- a/monohtml_rotifer_tanks3.html
++++ b/monohtml_rotifer_tanks3.html
+@@
+-  const ROT_POOLS = new Map(); // tankId -> array of {x,y,vx,vy}
++  const ROT_POOLS = new Map(); // tankId -> array of {x,y,z,vx,vy,vz}
+@@
+-  function project(wx, wy, wz) {
+-    const p = worldToScreen(wx, wy);
+-    const dx = wz * PROJ.scale * Math.cos(PROJ.angle) * camera.zoom * BASE_PX;
+-    const dy = -wz * PROJ.scale * Math.sin(PROJ.angle) * camera.zoom * BASE_PX;
+-    return {x: p.x + dx, y: p.y + dy};
+-  }
++  function project(wx, wy, wz) {
++    const p = worldToScreen(wx, wy);
++    const dx = wz * PROJ.scale * Math.cos(PROJ.angle) * camera.zoom * BASE_PX;
++    const dy = -wz * PROJ.scale * Math.sin(PROJ.angle) * camera.zoom * BASE_PX;
++    return {x: p.x + dx, y: p.y + dy};
++  }
+@@
+-  function spawnRotifers(tankId, count, circ){
++  function spawnRotifers(tankId, count, circ){
+@@
+-      const vx = gauss()*0.005, vy = gauss()*0.005;
+-      ROT_POOLS.get(t.id).push({x:wx, y:wy, vx, vy});
++      // распределяем по глубине 0..t.d, добавляем скорость по z
++      const wz = Math.random() * t.d;
++      const vx = gauss()*0.005, vy = gauss()*0.005, vz = gauss()*0.005;
++      ROT_POOLS.get(t.id).push({x:wx, y:wy, z:wz, vx, vy, vz});
+     }
+   }
+@@
+-  function stepRotifers(dt){
++  function stepRotifers(dt){
+@@
+-        r.vx += gauss() * BROWN_SIGMA * Math.sqrt(dt);
+-        r.vy += gauss() * BROWN_SIGMA * Math.sqrt(dt);
+-        const v = Math.hypot(r.vx, r.vy);
+-        if (v > V_MAX){ const k = V_MAX / v; r.vx *= k; r.vy *= k; }
+-        r.x += r.vx * dt;
+-        r.y += r.vy * dt;
++        r.vx += gauss() * BROWN_SIGMA * Math.sqrt(dt);
++        r.vy += gauss() * BROWN_SIGMA * Math.sqrt(dt);
++        r.vz += gauss() * BROWN_SIGMA * Math.sqrt(dt);
++        const v = Math.hypot(r.vx, r.vy, r.vz);
++        if (v > V_MAX){ const k = V_MAX / v; r.vx *= k; r.vy *= k; r.vz *= k; }
++        r.x += r.vx * dt;
++        r.y += r.vy * dt;
++        r.z += r.vz * dt;
+@@
+-        // boundaries: walls and surface/bottom
++        // boundaries: walls (x), surface/bottom (y), depth (z)
+@@
+-        if (r.y > bottom-0.1){ r.y = bottom-0.1; r.vy = -Math.abs(r.vy)*0.5; }
++        if (r.y > bottom-0.1){ r.y = bottom-0.1; r.vy = -Math.abs(r.vy)*0.5; }
++        if (r.z < 0.0){ r.z = 0.0; r.vz = Math.abs(r.vz)*0.6; }
++        if (r.z > t.d){ r.z = t.d; r.vz = -Math.abs(r.vz)*0.6; }
+@@
+-        // cut off outside microscope circle (screen space)
+-        const s = worldToScreen(r.x, r.y);
++        // cut off outside microscope circle (screen space) — учитываем z
++        const s = project(r.x, r.y, r.z);
+         const cx = (canvas.width / DPR) * 0.5;
+         const cy = (canvas.height/ DPR) * 0.5;
+         const rCss = (Math.min(canvas.width, canvas.height) * 0.28) / DPR;
+         const dx = s.x - cx, dy = s.y - cy;
+         if (dx*dx + dy*dy > rCss*rCss){ arr.splice(i,1); i--; continue; }
+@@
+-  function renderRotifers(){
++  function renderRotifers(){
+@@
+-    ctx.fillStyle = '#000';
+-    for (const t of tanks){
+-      const arr = ROT_POOLS.get(t.id);
+-      for (let i=0;i<arr.length;i++){
+-        const r = arr[i];
+-        const s = worldToScreen(r.x, r.y);
+-        ctx.fillRect(Math.round(s.x)-1, Math.round(s.y)-1, 2, 2);
+-      }
+-    }
++    for (const t of tanks){
++      const arr = ROT_POOLS.get(t.id);
++      if (!arr || !arr.length) continue;
++      // рендерим по z: дальние светлее, ближние темнее
++      const order = arr.map((_,i)=>i).sort((a,b)=>arr[a].z - arr[b].z);
++      for (const i of order){
++        const r = arr[i];
++        const s = project(r.x, r.y, r.z);
++        const shade = 0.85 - 0.55*(r.z / t.d);
++        ctx.fillStyle = `rgba(0,0,0,${shade.toFixed(3)})`;
++        ctx.fillRect(Math.round(s.x)-1, Math.round(s.y)-1, 2, 2);
++      }
++    }
