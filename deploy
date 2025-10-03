@@ -1,0 +1,5 @@
+git add .
+git commit -m "your commit message"
+Push your branch to GitHub:
+Code
+git push --set-upstream origin my-branch
